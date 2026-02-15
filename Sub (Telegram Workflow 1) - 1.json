@@ -1,0 +1,694 @@
+{
+  "name": "Sub (Telegram Workflow 1) - 1",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ade6191f-7c67-437b-9613-8777cdb24242",
+      "name": "Telegram Trigger",
+      "webhookId": "3b29105b-14d1-423a-bb32-92c307de302a",
+      "credentials": {
+        "telegramApi": {
+          "id": "5pMgRQt9L8H5vUFT",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.taskId }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        -240
+      ],
+      "id": "a404ab1b-33f9-4853-9156-030c95ce3a40",
+      "name": "Get a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "rs1r0bbkLN91aarZ",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const callbackData = $input.first().json.callback_query.data;\nconst chatId = $input.first().json.callback_query.message.chat.id;\nconst messageId = $input.first().json.callback_query.message.message_id;\nconst callbackQueryId = $input.first().json.callback_query.id;\n\n// Check if it's a task view request\nif (callbackData.startsWith('view_')) {\n  const taskId = callbackData.replace('view_', '');\n  \n  return [{\n    json: {\n      action: 'view_task',\n      taskId: taskId,\n      chatId: chatId,\n      messageId: messageId,\n      callbackQueryId: callbackQueryId\n    }\n  }];\n}\n\n// Check if it's a status update request\nif (callbackData.startsWith('update_')) {\n  const parts = callbackData.split('_');\n  const taskId = parts[1];\n  const newStatus = parts.slice(2).join('_');\n  \n  return [{\n    json: {\n      action: 'update_status',\n      taskId: taskId,\n      newStatus: newStatus,\n      chatId: chatId,\n      messageId: messageId,\n      callbackQueryId: callbackQueryId\n    }\n  }];\n}\n\n// Handle refresh\nif (callbackData === 'refresh_tasks') {\n  return [{\n    json: {\n      action: 'refresh_task',\n      chatId: chatId,\n      messageId: messageId,\n      callbackQueryId: callbackQueryId\n    }\n  }];\n}\n\n// Handle To do\nif (callbackData === 'To do') {\n  return [{\n    json: {\n      action: 'To do',\n      chatId: chatId,\n      messageId: messageId,\n      callbackQueryId: callbackQueryId\n    }\n  }];\n}\n\n// Handle In progress\nif (callbackData === 'In progress') {\n  return [{\n    json: {\n      action: 'In progress',\n      chatId: chatId,\n      messageId: messageId,\n      callbackQueryId: callbackQueryId\n    }\n  }];\n}\n\n// Handle Done\nif (callbackData === 'Done') {\n  return [{\n    json: {\n      action: 'Done',\n      chatId: chatId,\n      messageId: messageId,\n      callbackQueryId: callbackQueryId\n    }\n  }];\n}\n\n//Default\nreturn [{\n  json: {\n    action: 'unknown',\n    chatId: chatId,\n    messageId: messageId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "54aeb52b-fa3f-436e-a772-f3eb76e03447",
+      "name": "Extract Button"
+    },
+    {
+      "parameters": {
+        "jsCode": "const task = $input.first().json;\nconst chatId = $('Extract Button').item.json.chatId;\nconst messageId = $('Extract Button').item.json.messageId;\nconst callbackQueryId = $('Extract Button').item.json.callbackQueryId;\n\n// Helper function\nfunction getPriorityEmoji(priority) {\n  const map = { \n    'High': '🔴', \n    'Medium': '🟡', \n    'Low': '🟢' \n  };\n  return map[priority] || '⚪';\n}\n\nfunction getStatusEmoji(status) {\n  const map = {\n    'To do': '📝',\n    'In progress': '🔄',\n    'Done': '✅'\n  };\n  return map[status] || '📊';\n}\n\n// Build detailed card\nconst priority = getPriorityEmoji(task.property_priority);\nconst statusEmoji = getStatusEmoji(task.property_status);\n\nlet message = \"📋 *TASK DETAILS* \";\n\nmessage += `*${task.property_name}*\\n`;\n\nmessage += `📅 *Start Date*\\n`;\nmessage += `   ${task.property_due_date?.start || 'Not set'}\\n\\n`;\n\nmessage += `🏁 *End Date*\\n`;\nmessage += `   ${task.property_due_date?.end || 'Not set'}\\n\\n`;\n\nmessage += `${priority} *Priority*\\n`;\nmessage += `   ${task.property_priority}\\n\\n`;\n\nmessage += `${statusEmoji} *Status*\\n`;\nmessage += `   ${task.property_status}\\n\\n`;\n\nmessage += `📁 *Category*\\n`;\nmessage += `   ${task.property_category}\\n\\n`;\n\nif (task.property_days_left !== null && task.property_days_left !== undefined) {\n  const daysLeftText = task.property_days_left === 0 ? 'Due today!' : \n                       task.property_days_left > 0 ? `${task.property_days_left} days left` :\n                       `${Math.abs(task.property_days_left)} days overdue`;\n  message += `⏰ *Time Remaining*\\n`;\n  message += `   ${daysLeftText}\\n\\n`;\n}\n\n\n// Create action buttons based on current status\nconst buttons = [];\n\nif (task.property_status === 'To do') {\n  buttons.push([\n    {\n      text: \"▶️ Start Task\",\n      callback_data: `update_${task.id}_In progress`\n    }\n  ]);\n} else if (task.property_status === 'In progress') {\n  buttons.push([\n    {\n      text: \"✅ Complete\",\n      callback_data: `update_${task.id}_Done`\n    }\n  ]);\n} \n\n// Add back button\nbuttons.push([{\n  text: \"⬅️ Back to List\",\n  callback_data: \"refresh_tasks\"\n}]);\n\n// Create payload for editing message\nconst telegramPayload = {\n  chat_id: chatId,\n  message_id: messageId,\n  text: message,\n  parse_mode: \"Markdown\",\n  reply_markup: {\n    inline_keyboard: buttons\n  }\n};\n\nreturn [{\n  json: {\n    telegramPayload: telegramPayload,\n    callbackQueryId: callbackQueryId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -240
+      ],
+      "id": "6fda51ca-6d6e-4e8e-a380-31debe193142",
+      "name": "Format Task Detail Card"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8583254882:AAHsPa-fObYdaWeY9ywWxZ0yglvaoAYu20Q/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.telegramPayload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1536,
+        -176
+      ],
+      "id": "27ef56e8-1d23-41df-a45e-e4c57fe4a30d",
+      "name": "Edit Message"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "view_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9e87d73c-5a9b-49ff-a54a-541f0493ce4c"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1f9078af-2307-4570-a073-37d41ca5e40c",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "refresh_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "27a50f6e-0c3c-4a03-a6f2-e393f6000336",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "update_status",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0c7c9ea0-1521-4f29-9122-1172a7ae7b25",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "To do",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9b59d473-5451-4ca1-addc-d38021b8f6ed",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "In progress",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "60935ada-8e30-480b-9a30-dcd1cdef8188",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "Done",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1850c0fa-aa21-4cbb-89b1-c93f3a07e00e",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "unknown",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 3
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "1b187f63-f4c2-401a-9be0-3ab45dd4ed69",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "eb5b6889-5b4b-8297-9b01-81615bd11c1f",
+          "mode": "list",
+          "cachedResultName": "To-Do List",
+          "cachedResultUrl": "https://www.notion.so/eb5b68895b4b82979b0181615bd11c1f"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "={{ $json.messageId }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        -80
+      ],
+      "id": "35ff9511-27ff-4bfc-bfb7-efdc7110be13",
+      "name": "Get many database pages",
+      "credentials": {
+        "notionApi": {
+          "id": "rs1r0bbkLN91aarZ",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst chatId = $('Switch').item.json.chatId;\n\n// Count tasks by status\nconst todoCount = items.filter(item => item.json.property_status === 'To do').length;\nconst inProgressCount = items.filter(item => item.json.property_status === 'In progress').length;\nconst doneCount = items.filter(item => item.json.property_status === 'Done').length;\n\n// Build message\nlet message = \"📋 *Task Manager*\\n\\n\";\nmessage += `📊 *Overview:*\\n`;\nmessage += `• To Do: ${todoCount} tasks\\n`;\nmessage += `• In Progress: ${inProgressCount} tasks\\n`;\nmessage += `• Done: ${doneCount} tasks\\n`;\nmessage += `• Total: ${items.length} tasks\\n\\n`;\nmessage += `👇 *Choose a status to view tasks*`;\n\n// Create status filter buttons\nconst buttons = [\n  [\n    {\n      text: `📝 To Do (${todoCount})`,\n      callback_data: \"To do\"\n    }\n  ],\n  [\n    {\n      text: `🔄 In Progress (${inProgressCount})`,\n      callback_data: \"In progress\"\n    }\n  ],\n  [\n    {\n      text: `✅ Done (${doneCount})`,\n      callback_data: \"Done\"\n    }\n  ],\n  [\n    {\n      text: \"🔄 Refresh\",\n      callback_data: \"refresh_tasks\"\n    }\n  ]\n];\n\n// Create Telegram API payload\nconst telegramPayload = {\n  chat_id: chatId,\n  text: message,\n  parse_mode: \"Markdown\",\n  reply_markup: {\n    inline_keyboard: buttons\n  }\n};\n\nreturn [{\n  json: {\n    telegramPayload: telegramPayload\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -64
+      ],
+      "id": "1cc49f56-48ef-495d-8c47-d1fd8acc2a1a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const telegramMessage = $input.first().json.action;\nconst notionStatusFilter = {\n  \n    \"property\": \"Status\",\n    \"status\": {\n      \"equals\": telegramMessage\n  \n  }\n    \n}\n\nreturn [\n  { \n    json: {  // ← Changed to lowercase \"json\"\n      telegramMessage: telegramMessage,\n      userId: $input.first().json.chatId,\n      filterNotion : JSON.stringify(notionStatusFilter)\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        304
+      ],
+      "id": "b6a8755b-64d5-41d8-8c80-16faa223a2f0",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "eb5b6889-5b4b-8297-9b01-81615bd11c1f",
+          "mode": "list",
+          "cachedResultName": "To-Do List",
+          "cachedResultUrl": "https://www.notion.so/eb5b68895b4b82979b0181615bd11c1f"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "={{ $json.filterNotion }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        304
+      ],
+      "id": "53c2e5fc-29cb-4fcf-a95d-3c1f48a22150",
+      "name": "Get many database pages1",
+      "alwaysOutputData": true,
+      "executeOnce": false,
+      "credentials": {
+        "notionApi": {
+          "id": "rs1r0bbkLN91aarZ",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.callback_query.message.chat.id }}",
+        "text": "There's no action for this trigger, please choose list from the menu option",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        656,
+        512
+      ],
+      "id": "7cf861ad-f89c-4e0e-89d2-00dea79f18e0",
+      "name": "Send a text message",
+      "webhookId": "d389635d-9197-4e4a-b2a1-835131c1af42",
+      "credentials": {
+        "telegramApi": {
+          "id": "5pMgRQt9L8H5vUFT",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a9add190-aa4c-4738-8783-d44e16d33c6b",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        912,
+        512
+      ],
+      "id": "3c39c750-d555-4ab1-b259-c26380cb0d9f",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst chatId = $('Telegram Trigger').first().json.callback_query.message.chat.id;\n// Separate tasks by status\nconst todoTasks = items.filter(item => item.json.property_status === 'To do');\nconst inProgressTasks = items.filter(item => item.json.property_status === 'In progress');\nconst doneTasks = items.filter(item => item.json.property_status === 'Done');\n\n// Helper function for priority emojis\nfunction getPriorityEmoji(priority) {\n  const map = { \n    'High': '🔴', \n    'Medium': '🟡', \n    'Low': '🟢' \n  };\n  return map[priority] || '⚪';\n}\n\n// Build simple message\nlet message = \"📋 *Your Tasks*\\n\\n\";\nmessage += `📊 Overview:\\n`;\nmessage += `• To Do: ${todoTasks.length}\\n`;\nmessage += `• In Progress: ${inProgressTasks.length}\\n`;\nmessage += `• Done: ${doneTasks.length}\\n`;\nmessage += `• Total: ${items.length}\\n\\n`;\nmessage += `👇 *Select a task to view details*`;\n\n// Create buttons array\nconst buttons = [];\n\n// TO DO Section Buttons\nif (todoTasks.length > 0) {\n  todoTasks.forEach((item) => {\n    const task = item.json;\n    const priority = getPriorityEmoji(task.property_priority);\n    \n    buttons.push([{\n      text: `${priority} 📝 ${task.property_name.substring(0, 35)}`,\n      callback_data: `view_${task.id}`\n    }]);\n  });\n}\n\n// IN PROGRESS Section Buttons\nif (inProgressTasks.length > 0) {\n  inProgressTasks.forEach((item) => {\n    const task = item.json;\n    const priority = getPriorityEmoji(task.property_priority);\n    \n    buttons.push([{\n      text: `${priority} 🔄 ${task.property_name.substring(0, 35)}`,\n      callback_data: `view_${task.id}`\n    }]);\n  });\n}\n\n// DONE Section Buttons\nif (doneTasks.length > 0) {\n  doneTasks.forEach((item) => {\n    const task = item.json;\n    const priority = getPriorityEmoji(task.property_priority);\n    \n    buttons.push([{\n      text: `${priority} ✅ ${task.property_name.substring(0, 35)}`,\n      callback_data: `view_${task.id}`\n    }]);\n  });\n}\n\n\n// Create Telegram API payload\nconst telegramPayload = {\n  chat_id: chatId,\n  text: message,\n  parse_mode: \"Markdown\",\n  reply_markup: {\n    inline_keyboard: buttons\n  }\n};\n\nreturn [{\n  json: {\n    telegramPayload: telegramPayload\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        512
+      ],
+      "id": "09050536-d96d-4297-bf93-1aa05881cddb",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.taskId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status|status",
+              "statusValue": "={{ $json.newStatus }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        784,
+        96
+      ],
+      "id": "8c63fa4c-151c-44fd-b199-455854322121",
+      "name": "Update Page",
+      "credentials": {
+        "notionApi": {
+          "id": "rs1r0bbkLN91aarZ",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const updatedTask = $input.first().json;\nconst extractedData = $('Update Page').first().json;\nconst chatId = $('Extract Button').item.json.chatId;\nconst messageId = $('Extract Button').item.json.messageId;\nconst newStatus = extractedData.property_status;\n\n// Get task name from the updated Notion response\nconst taskName = updatedTask.property_name || 'Task';\n\n// Helper function for status emojis\nfunction getStatusEmoji(status) {\n  const map = {\n    'To do': '📝',\n    'In progress': '🔄',\n    'Done': '✅'\n  };\n  return map[status] || '📊';\n}\n\nconst emoji = getStatusEmoji(newStatus);\n\n// Build confirmation message\nlet message = \"✅ *Status Updated!*\\n\\n\";\nmessage += `${emoji} *${taskName}*\\n\\n`;\nmessage += `New status: *${newStatus}*\\n\\n`;\n\n// Add motivational message based on status\nif (newStatus === 'In progress') {\n  message += `🚀 Great! You've started working on this task.\\n\\n`;\n} else if (newStatus === 'Done') {\n  message += `🎉 Awesome! Task completed!\\n\\n`;\n} else if (newStatus === 'To do') {\n  message += `📝 Task moved back to To Do.\\n\\n`;\n}\n\nmessage += `What would you like to do next?`;\n\n// Create navigation buttons\nconst buttons = [\n  [\n    {\n      text: \"⬅️ Back to Menu\",\n      callback_data: \"refresh_tasks\"\n    }\n  ]\n];\n\n// Create Telegram payload\nconst telegramPayload = {\n  chat_id: chatId,\n  message_id: messageId,\n  text: message,\n  parse_mode: \"Markdown\",\n  reply_markup: {\n    inline_keyboard: buttons\n  }\n};\n\nreturn [{\n  json: {\n    telegramPayload: telegramPayload\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        96
+      ],
+      "id": "d31c7a4c-eeb1-45a4-b94e-2a9e48574fad",
+      "name": "Format Confirmation Message"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Button",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a database page": {
+      "main": [
+        [
+          {
+            "node": "Format Task Detail Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Button": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Task Detail Card": {
+      "main": [
+        [
+          {
+            "node": "Edit Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Message": {
+      "main": [
+        []
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Get a database page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Edit Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Edit Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Page": {
+      "main": [
+        [
+          {
+            "node": "Format Confirmation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Confirmation Message": {
+      "main": [
+        [
+          {
+            "node": "Edit Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "63c2b313-607f-4021-a4d9-a75d7051c712",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dc12bb738b6d289675ba92357bc76f60bab599ea7fd79c16f82ee7ff1f1d413d"
+  },
+  "id": "4c0mq8Tuz4WLx5IF",
+  "tags": []
+}

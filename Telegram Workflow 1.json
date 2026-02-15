@@ -1,0 +1,611 @@
+{
+  "name": "Telegram Workflow 1",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -160,
+        0
+      ],
+      "id": "4744ad39-5979-44c7-b4e4-cac395229b8b",
+      "name": "Telegram Trigger",
+      "webhookId": "2aeca286-99e9-4d5e-9cc5-98e940456fb8",
+      "credentials": {
+        "telegramApi": {
+          "id": "5pMgRQt9L8H5vUFT",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let telegramMessage = $input.first().json.message.text.toUpperCase();\nconst x = '/TODOLIST';\nconst y = '/INPROGRESS';\nconst w = '/DONE';\n\nif (telegramMessage.includes(x)) {\n  telegramMessage = 'To do';\n}  else if (telegramMessage.includes(y)){\n  telegramMessage = 'In progress';\n} else if (telegramMessage.includes(w)){\n  telegramMessage = 'Done';\n}\nelse {  // ← Added \"else\" here\n  telegramMessage = 'FALSE';\n}\n\nconst notionStatusFilter = {\n  \n    \"property\": \"Status\",\n    \"status\": {\n      \"equals\": telegramMessage\n  \n  }\n    \n}\n\nreturn [\n  { \n    json: {  // ← Changed to lowercase \"json\"\n      telegramMessage: telegramMessage,\n      userId: $input.first().json.message.from.id,\n      filterNotion : JSON.stringify(notionStatusFilter)\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        128
+      ],
+      "id": "a34f8e3c-be65-4885-8fde-4f93f21594b5",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "eb5b6889-5b4b-8297-9b01-81615bd11c1f",
+          "mode": "list",
+          "cachedResultName": "To-Do List",
+          "cachedResultUrl": "https://www.notion.so/eb5b68895b4b82979b0181615bd11c1f"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "={{ $json.filterNotion }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        0
+      ],
+      "id": "b006ec02-7c68-413c-8abf-b1b97482d4be",
+      "name": "Get many database pages",
+      "alwaysOutputData": true,
+      "executeOnce": false,
+      "credentials": {
+        "notionApi": {
+          "id": "rs1r0bbkLN91aarZ",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "There's no action for this trigger, please choose list from the menu option",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        848,
+        160
+      ],
+      "id": "c789fad9-2b30-4bb1-ae06-32aaa6a6971f",
+      "name": "Send a text message",
+      "webhookId": "d389635d-9197-4e4a-b2a1-835131c1af42",
+      "credentials": {
+        "telegramApi": {
+          "id": "5pMgRQt9L8H5vUFT",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a9add190-aa4c-4738-8783-d44e16d33c6b",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "00988a24-8195-44e0-a269-1ca299926c7a",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst chatId = $('Telegram Trigger').item.json.message.chat.id;\n\n// Separate tasks by status\nconst todoTasks = items.filter(item => item.json.property_status === 'To do');\nconst inProgressTasks = items.filter(item => item.json.property_status === 'In progress');\nconst doneTasks = items.filter(item => item.json.property_status === 'Done');\n\n// Helper function for priority emojis\nfunction getPriorityEmoji(priority) {\n  const map = { \n    'High': '🔴', \n    'Medium': '🟡', \n    'Low': '🟢' \n  };\n  return map[priority] || '⚪';\n}\n\n// Build simple message\nlet message = \"📋 *Your Tasks*\\n\\n\";\nmessage += `📊 Overview:\\n`;\nmessage += `• To Do: ${todoTasks.length}\\n`;\nmessage += `• In Progress: ${inProgressTasks.length}\\n`;\nmessage += `• Done: ${doneTasks.length}\\n`;\nmessage += `• Total: ${items.length}\\n\\n`;\nmessage += `👇 *Select a task to view details*`;\n\n// Create buttons array\nconst buttons = [];\n\n// TO DO Section Buttons\nif (todoTasks.length > 0) {\n  todoTasks.forEach((item) => {\n    const task = item.json;\n    const priority = getPriorityEmoji(task.property_priority);\n    \n    buttons.push([{\n      text: `${priority} 📝 ${task.property_name.substring(0, 35)}`,\n      callback_data: `view_${task.id}`\n    }]);\n  });\n}\n\n// IN PROGRESS Section Buttons\nif (inProgressTasks.length > 0) {\n  inProgressTasks.forEach((item) => {\n    const task = item.json;\n    const priority = getPriorityEmoji(task.property_priority);\n    \n    buttons.push([{\n      text: `${priority} 🔄 ${task.property_name.substring(0, 35)}`,\n      callback_data: `view_${task.id}`\n    }]);\n  });\n}\n\n// DONE Section Buttons\nif (doneTasks.length > 0) {\n  doneTasks.forEach((item) => {\n    const task = item.json;\n    const priority = getPriorityEmoji(task.property_priority);\n    \n    buttons.push([{\n      text: `${priority} ✅ ${task.property_name.substring(0, 35)}`,\n      callback_data: `view_${task.id}`\n    }]);\n  });\n}\n\n\n// Create Telegram API payload\nconst telegramPayload = {\n  chat_id: chatId,\n  text: message,\n  parse_mode: \"Markdown\",\n  reply_markup: {\n    inline_keyboard: buttons\n  }\n};\n\nreturn [{\n  json: {\n    telegramPayload: telegramPayload\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -96
+      ],
+      "id": "dee8fce3-a3cd-4960-b769-3e5566bc1a7f",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8583254882:AAHsPa-fObYdaWeY9ywWxZ0yglvaoAYu20Q/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.telegramPayload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1088,
+        -96
+      ],
+      "id": "5da03691-61be-4a87-a8d4-c714124743a0",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "78f308ad-bfdd-4d80-bc97-ce753cf759d9",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/report",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ad1cd3b7-42cd-4c36-8a70-28477269940e",
+      "name": "Check Trigger"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "eb5b6889-5b4b-8297-9b01-81615bd11c1f",
+          "mode": "list",
+          "cachedResultName": "To-Do List",
+          "cachedResultUrl": "https://www.notion.so/eb5b68895b4b82979b0181615bd11c1f"
+        },
+        "limit": 100,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        -96
+      ],
+      "id": "f3b4aa7f-55f9-46c8-bc0f-1755216209f6",
+      "name": "Get many database pages1",
+      "credentials": {
+        "notionApi": {
+          "id": "rs1r0bbkLN91aarZ",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Separate tasks by status\nconst todoTasks = items.filter(item => item.json.property_status === 'To do');\nconst inProgressTasks = items.filter(item => item.json.property_status === 'In progress');\nconst doneTasks = items.filter(item => item.json.property_status === 'Done');\n\n// Calculate totals and percentages\nconst total = items.length;\nconst todoCount = todoTasks.length;\nconst inProgressCount = inProgressTasks.length;\nconst doneCount = doneTasks.length;\n\nconst todoPercent = total > 0 ? ((todoCount / total) * 100).toFixed(1) : 0;\nconst inProgressPercent = total > 0 ? ((inProgressCount / total) * 100).toFixed(1) : 0;\nconst donePercent = total > 0 ? ((doneCount / total) * 100).toFixed(1) : 0;\n\n// Helper function to sort tasks by due date\nfunction sortByDueDate(tasks) {\n  return tasks.sort((a, b) => {\n    const dateA = a.json.property_due_date?.start || '9999-12-31';\n    const dateB = b.json.property_due_date?.start || '9999-12-31';\n    return dateA.localeCompare(dateB);\n  });\n}\n\n// Sort all task lists by due date\nconst sortedTodo = sortByDueDate([...todoTasks]);\nconst sortedInProgress = sortByDueDate([...inProgressTasks]);\nconst sortedDone = sortByDueDate([...doneTasks]);\n\n// Function to create table data\nfunction createTableData(tasks) {\n  return tasks.map(task => ({\n    dueDate: task.json.property_due_date?.start || 'Not set',\n    taskName: task.json.property_name,\n    status: task.json.property_status,\n    priority: task.json.property_priority,\n    category: task.json.property_category\n  }));\n}\n\n// Create table data for each status\nconst todoTableData = createTableData(sortedTodo);\nconst inProgressTableData = createTableData(sortedInProgress);\nconst doneTableData = createTableData(sortedDone);\n\n// Get today's date\nconst reportDate = new Date().toLocaleDateString('en-US', { \n  weekday: 'long', \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric' \n});\n\n// Count high priority tasks\nconst highPriorityPending = [...todoTasks, ...inProgressTasks].filter(\n  t => t.json.property_priority === 'High'\n).length;\n\n// Get upcoming deadlines (next 3 days)\nconst today = new Date();\nconst threeDaysLater = new Date(today.getTime() + (3 * 24 * 60 * 60 * 1000));\nconst upcomingTasks = [...todoTasks, ...inProgressTasks].filter(task => {\n  const dueDate = task.json.property_due_date?.start;\n  if (!dueDate) return false;\n  const due = new Date(dueDate);\n  return due >= today && due <= threeDaysLater;\n});\n\n// Create summary for LLM\nconst summaryForLLM = {\n  date: reportDate,\n  statistics: {\n    total: total,\n    todo: { count: todoCount, percentage: todoPercent },\n    inProgress: { count: inProgressCount, percentage: inProgressPercent },\n    done: { count: doneCount, percentage: donePercent }\n  },\n  todoTasks: todoTableData,\n  inProgressTasks: inProgressTableData,\n  doneTasks: doneTableData,\n  completionRate: donePercent,\n  highPriorityPending: highPriorityPending,\n  upcomingDeadlines: upcomingTasks.length\n};\n\n// Create detailed prompt for LLM\nconst promptForLLM = `You are a professional task management analyst. Analyze the following task data and provide strategic insights.\n\nREPORT DATE: ${reportDate}\n\nOVERALL STATISTICS:\n- Total Tasks: ${total}\n- To Do: ${todoCount} tasks (${todoPercent}%)\n- In Progress: ${inProgressCount} tasks (${inProgressPercent}%)\n- Done: ${doneCount} tasks (${donePercent}%)\n- Completion Rate: ${donePercent}%\n\nKEY METRICS:\n- High Priority Pending: ${highPriorityPending} tasks\n- Upcoming Deadlines (3 days): ${upcomingTasks.length} tasks\n\nTO DO TASKS (${todoCount}) - Sample:\n${todoTableData.slice(0, 8).map(t => `- ${t.taskName} (${t.priority} priority, Due: ${t.dueDate})`).join('\\n')}\n${todoCount > 8 ? `... and ${todoCount - 8} more` : ''}\n\nIN PROGRESS TASKS (${inProgressCount}) - Sample:\n${inProgressTableData.slice(0, 8).map(t => `- ${t.taskName} (${t.priority} priority, Due: ${t.dueDate})`).join('\\n')}\n${inProgressCount > 8 ? `... and ${inProgressCount - 8} more` : ''}\n\nCOMPLETED TASKS (${doneCount}) - Recent:\n${doneTableData.slice(0, 5).map(t => `- ${t.taskName}`).join('\\n')}\n${doneCount > 5 ? `... and ${doneCount - 5} more` : ''}\n\nPlease provide a professional analysis with these sections:\n\n**EXECUTIVE SUMMARY** (3-4 sentences)\nBrief overview of task management performance and current status\n\n**KEY INSIGHTS** (4-5 bullet points)\nImportant observations about:\n- Completion rate and productivity\n- Priority distribution\n- Workload balance\n- Any patterns or trends\n\n**RECOMMENDATIONS** (4-5 bullet points)\nActionable suggestions for:\n- Task prioritization\n- Time management\n- Workflow optimization\n- Capacity planning\n\n**RISK ASSESSMENT**\nIdentify any concerns about:\n- Overdue or upcoming deadlines\n- Workload bottlenecks\n- Resource allocation\n\nKeep the tone professional, data-driven, and actionable. Use clear formatting with headers.`;\n\n// Return structured data\nreturn [{\n  json: {\n    prompt: promptForLLM,\n    reportData: summaryForLLM,\n    statistics: {\n      total: total,\n      todoCount: todoCount,\n      inProgressCount: inProgressCount,\n      doneCount: doneCount,\n      todoPercent: todoPercent,\n      inProgressPercent: inProgressPercent,\n      donePercent: donePercent\n    },\n    tables: {\n      todo: todoTableData,\n      inProgress: inProgressTableData,\n      done: doneTableData\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -208
+      ],
+      "id": "f3520f12-8b5f-4533-8a82-5eb0c63bbede",
+      "name": "Format Data for LLM"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://granville-nonalternating-remington.ngrok-free.dev/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.apiPayload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        720,
+        -224
+      ],
+      "id": "23a1ffe2-a54c-4daf-a245-31ac10af5516",
+      "name": "Call LM Studio API"
+    },
+    {
+      "parameters": {
+        "jsCode": "const llmResponse = $input.first().json;\n\n// Extract the generated text\nconst reportText = llmResponse.choices[0].message.content;\n\n// Get the report data from previous node\nconst reportData = $('Format Data for LLM').first().json.reportData;\nconst statistics = $('Format Data for LLM').first().json.statistics;\nconst tables = $('Format Data for LLM').first().json.tables;\n\nreturn [{\n  json: {\n    reportText: reportText,\n    reportData: reportData,\n    statistics: statistics,\n    tables: tables\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -240
+      ],
+      "id": "776561e4-0ab3-488e-82a3-ab2b71a0c74b",
+      "name": "Extract LLM Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const reportText = $input.first().json.reportText;\nconst stats = $input.first().json.statistics;\nconst tables = $input.first().json.tables;\nconst reportData = $input.first().json.reportData;\n\nconst allTasks = [\n  ...tables.todo,      // Spreads the array items\n  ...tables.inProgress,\n  ...tables.done\n];\n\n// Define sort order for status and priority\nconst statusOrder = {\n  'To do': 1,\n  'In progress': 2,\n  'Done': 3\n};\n\nconst priorityOrder = {\n  'High': 1,\n  'Medium': 2,\n  'Low': 3\n};\n\n// Sort combined tasks by status → priority → due date\nallTasks.sort((a, b) => {\n  // First, sort by status\n  const statusCompare = statusOrder[a.status] - statusOrder[b.status];\n  if (statusCompare !== 0) return statusCompare;\n  \n  // Then, sort by priority within same status\n  const priorityCompare = priorityOrder[a.priority] - priorityOrder[b.priority];\n  if (priorityCompare !== 0) return priorityCompare;\n  \n  // Finally, sort by due date within same priority\n  const dateA = a.dueDate === 'Not set' ? '9999-12-31' : a.dueDate;\n  const dateB = b.dueDate === 'Not set' ? '9999-12-31' : b.dueDate;\n  return dateA.localeCompare(dateB);\n});\n\n// Create HTML\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    * {\n      margin: 0;\n      padding: 0;\n      box-sizing: border-box;\n    }\n    \n    body {\n      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n      line-height: 1.6;\n      color: #2c3e50;\n      background: #f5f7fa;\n      padding: 40px 20px;\n    }\n    \n    .container {\n      max-width: 1000px;\n      margin: 0 auto;\n      background: white;\n      box-shadow: 0 0 30px rgba(0,0,0,0.1);\n      border-radius: 12px;\n      overflow: hidden;\n    }\n    \n    .header {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n      padding: 50px 40px;\n      text-align: center;\n    }\n    \n    .header h1 {\n      font-size: 38px;\n      margin-bottom: 12px;\n      font-weight: 600;\n      letter-spacing: -0.5px;\n    }\n    \n    .header p {\n      font-size: 18px;\n      opacity: 0.95;\n      font-weight: 300;\n    }\n    \n    .content {\n      padding: 40px;\n    }\n    \n    .section {\n      margin-bottom: 45px;\n    }\n    \n    .section-title {\n      font-size: 26px;\n      color: #667eea;\n      margin-bottom: 25px;\n      padding-bottom: 12px;\n      border-bottom: 3px solid #667eea;\n      display: flex;\n      align-items: center;\n      gap: 10px;\n      font-weight: 600;\n    }\n    \n    .stats-grid {\n      display: grid;\n      grid-template-columns: repeat(4, 1fr);\n      gap: 20px;\n      margin-bottom: 35px;\n    }\n    \n    .stat-card {\n      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);\n      padding: 30px 20px;\n      border-radius: 12px;\n      text-align: center;\n      position: relative;\n      overflow: hidden;\n      box-shadow: 0 2px 8px rgba(0,0,0,0.08);\n    }\n    \n    .stat-card::before {\n      content: '';\n      position: absolute;\n      top: 0;\n      left: 0;\n      width: 100%;\n      height: 4px;\n      background: linear-gradient(90deg, #667eea, #764ba2);\n    }\n    \n    .stat-number {\n      font-size: 48px;\n      font-weight: bold;\n      color: #667eea;\n      margin-bottom: 8px;\n      line-height: 1;\n    }\n    \n    .stat-label {\n      font-size: 13px;\n      color: #5a6c7d;\n      text-transform: uppercase;\n      letter-spacing: 1.2px;\n      font-weight: 600;\n    }\n    \n    .stat-percent {\n      font-size: 18px;\n      color: #764ba2;\n      font-weight: 600;\n      margin-top: 8px;\n    }\n    \n    .chart-container {\n      background: #f8f9fa;\n      padding: 35px;\n      border-radius: 12px;\n      margin-bottom: 35px;\n      box-shadow: 0 2px 8px rgba(0,0,0,0.05);\n    }\n    \n    .chart-title {\n      margin-bottom: 25px;\n      color: #2c3e50;\n      font-size: 20px;\n      font-weight: 600;\n    }\n    \n    .chart-row {\n      margin-bottom: 22px;\n    }\n    \n    .chart-label {\n      display: flex;\n      justify-content: space-between;\n      margin-bottom: 10px;\n      font-weight: 600;\n      color: #2c3e50;\n      font-size: 15px;\n    }\n    \n    .chart-bar-container {\n      background: #e9ecef;\n      border-radius: 10px;\n      height: 32px;\n      position: relative;\n      overflow: hidden;\n      box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);\n    }\n    \n    .chart-bar {\n      height: 100%;\n      border-radius: 10px;\n      display: flex;\n      align-items: center;\n      justify-content: flex-end;\n      padding-right: 12px;\n      color: white;\n      font-weight: bold;\n      font-size: 14px;\n      transition: width 1.2s ease-out;\n      box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n    }\n    \n    .chart-bar.todo {\n      background: linear-gradient(90deg, #ff6b6b, #ee5a6f);\n    }\n    \n    .chart-bar.progress {\n      background: linear-gradient(90deg, #ffd93d, #f39c12);\n    }\n    \n    .chart-bar.done {\n      background: linear-gradient(90deg, #6bcf7f, #51cf66);\n    }\n    \n    .table-info {\n      color: #868e96;\n      margin-bottom: 20px;\n      font-size: 14px;\n      font-style: italic;\n    }\n    \n    .table-container {\n      margin-bottom: 40px;\n      overflow-x: auto;\n      box-shadow: 0 4px 12px rgba(0,0,0,0.08);\n      border-radius: 10px;\n    }\n    \n    .task-table {\n      width: 100%;\n      border-collapse: collapse;\n      background: white;\n    }\n    \n    .task-table thead {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n    }\n    \n    .task-table th {\n      padding: 16px 14px;\n      text-align: left;\n      font-weight: 600;\n      font-size: 13px;\n      text-transform: uppercase;\n      letter-spacing: 0.8px;\n      white-space: nowrap;\n    }\n    \n    .task-table td {\n      padding: 15px 14px;\n      border-bottom: 1px solid #e9ecef;\n      font-size: 14px;\n    }\n    \n    .status-group-header {\n      background: linear-gradient(135deg, #f1f3f5 0%, #e9ecef 100%);\n      font-weight: 700;\n      color: #495057;\n      text-transform: uppercase;\n      letter-spacing: 1.2px;\n      font-size: 13px;\n    }\n    \n    .status-group-header td {\n      padding: 14px;\n      border-top: 3px solid #dee2e6;\n      border-bottom: 3px solid #dee2e6;\n    }\n    \n    .task-table tbody tr:hover:not(.status-group-header) {\n      background: #f8f9fa;\n      transition: background 0.2s ease;\n    }\n    \n    .task-table tbody tr:last-child td {\n      border-bottom: none;\n    }\n    \n    .status-badge {\n      display: inline-flex;\n      align-items: center;\n      gap: 5px;\n      padding: 6px 14px;\n      border-radius: 16px;\n      font-size: 12px;\n      font-weight: 600;\n      white-space: nowrap;\n    }\n    \n    .status-todo {\n      background: #fff0f0;\n      color: #c92a2a;\n      border: 1.5px solid #ffc9c9;\n    }\n    \n    .status-progress {\n      background: #fff9db;\n      color: #e67700;\n      border: 1.5px solid #ffe066;\n    }\n    \n    .status-done {\n      background: #d3f9d8;\n      color: #2b8a3e;\n      border: 1.5px solid #8ce99a;\n    }\n    \n    .priority-badge {\n      font-weight: 600;\n      font-size: 13px;\n      display: inline-flex;\n      align-items: center;\n      gap: 4px;\n    }\n    \n    .priority-high {\n      color: #e03131;\n    }\n    \n    .priority-medium {\n      color: #f59f00;\n    }\n    \n    .priority-low {\n      color: #37b24d;\n    }\n    \n    .date-cell {\n      font-family: 'Courier New', monospace;\n      color: #495057;\n      font-size: 13px;\n      font-weight: 500;\n    }\n    \n    .task-name-cell {\n      color: #2c3e50;\n      font-weight: 500;\n    }\n    \n    .category-badge {\n      display: inline-block;\n      padding: 4px 11px;\n      background: #e7f5ff;\n      color: #1864ab;\n      border-radius: 12px;\n      font-size: 12px;\n      font-weight: 500;\n    }\n    \n    .table-summary {\n      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);\n      padding: 16px 24px;\n      border-radius: 0 0 10px 10px;\n      display: flex;\n      justify-content: space-between;\n      align-items: center;\n      font-size: 14px;\n      color: #495057;\n      font-weight: 600;\n    }\n    \n    .summary-item {\n      display: flex;\n      gap: 24px;\n    }\n    \n    .ai-insights {\n      background: linear-gradient(135deg, #f5f7fa 0%, #e8eaf6 100%);\n      padding: 35px;\n      border-radius: 12px;\n      border-left: 5px solid #667eea;\n      box-shadow: 0 2px 8px rgba(0,0,0,0.05);\n    }\n    \n    .ai-insights h3 {\n      color: #667eea;\n      margin-bottom: 18px;\n      font-size: 22px;\n      font-weight: 600;\n    }\n    \n    .ai-insights p {\n      margin-bottom: 16px;\n      line-height: 1.8;\n      color: #2c3e50;\n    }\n    \n    .ai-insights ul {\n      margin-left: 20px;\n      margin-bottom: 16px;\n    }\n    \n    .ai-insights li {\n      margin-bottom: 12px;\n      line-height: 1.7;\n    }\n    \n    .footer {\n      text-align: center;\n      padding: 32px;\n      background: #f8f9fa;\n      color: #868e96;\n      font-size: 13px;\n      border-top: 1px solid #dee2e6;\n    }\n    \n    .footer p {\n      margin-bottom: 5px;\n    }\n    \n    .page-break {\n      page-break-before: always;\n    }\n    \n    @media print {\n      body {\n        padding: 0;\n        background: white;\n      }\n      .container {\n        box-shadow: none;\n      }\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <!-- Header -->\n    <div class=\"header\">\n      <h1>📋 Task Management Report</h1>\n      <p>${reportData.date}</p>\n    </div>\n    \n    <div class=\"content\">\n      <!-- Statistics Section -->\n      <div class=\"section\">\n        <h2 class=\"section-title\">📊 Overview</h2>\n        \n        <div class=\"stats-grid\">\n          <div class=\"stat-card\">\n            <div class=\"stat-number\">${stats.total}</div>\n            <div class=\"stat-label\">Total Tasks</div>\n          </div>\n          \n          <div class=\"stat-card\">\n            <div class=\"stat-number\">${stats.todoCount}</div>\n            <div class=\"stat-label\">To Do</div>\n            <div class=\"stat-percent\">${stats.todoPercent}%</div>\n          </div>\n          \n          <div class=\"stat-card\">\n            <div class=\"stat-number\">${stats.inProgressCount}</div>\n            <div class=\"stat-label\">In Progress</div>\n            <div class=\"stat-percent\">${stats.inProgressPercent}%</div>\n          </div>\n          \n          <div class=\"stat-card\">\n            <div class=\"stat-number\">${stats.doneCount}</div>\n            <div class=\"stat-label\">Done</div>\n            <div class=\"stat-percent\">${stats.donePercent}%</div>\n          </div>\n        </div>\n        \n        <!-- Chart -->\n        <div class=\"chart-container\">\n          <h3 class=\"chart-title\">Status Distribution Chart</h3>\n          \n          <div class=\"chart-row\">\n            <div class=\"chart-label\">\n              <span>📝 To Do</span>\n              <span>${stats.todoCount} tasks (${stats.todoPercent}%)</span>\n            </div>\n            <div class=\"chart-bar-container\">\n              <div class=\"chart-bar todo\" style=\"width: ${stats.todoPercent}%\">\n                ${stats.todoPercent}%\n              </div>\n            </div>\n          </div>\n          \n          <div class=\"chart-row\">\n            <div class=\"chart-label\">\n              <span>🔄 In Progress</span>\n              <span>${stats.inProgressCount} tasks (${stats.inProgressPercent}%)</span>\n            </div>\n            <div class=\"chart-bar-container\">\n              <div class=\"chart-bar progress\" style=\"width: ${stats.inProgressPercent}%\">\n                ${stats.inProgressPercent}%\n              </div>\n            </div>\n          </div>\n          \n          <div class=\"chart-row\">\n            <div class=\"chart-label\">\n              <span>✅ Done</span>\n              <span>${stats.doneCount} tasks (${stats.donePercent}%)</span>\n            </div>\n            <div class=\"chart-bar-container\">\n              <div class=\"chart-bar done\" style=\"width: ${stats.donePercent}%\">\n                ${stats.donePercent}%\n              </div>\n            </div>\n          </div>\n        </div>\n      </div>\n      \n      <!-- Combined Tasks Table -->\n      <div class=\"section\">\n        <h2 class=\"section-title\">📋 All Tasks - Detailed View</h2>\n        <p class=\"table-info\">\n          Sorted by Status → Priority → Due Date • Total: ${allTasks.length} tasks\n        </p>\n        \n        <div class=\"table-container\">\n          <table class=\"task-table\">\n            <thead>\n              <tr>\n                <th style=\"width: 110px;\">Due Date</th>\n                <th style=\"width: 40%;\">Task</th>\n                <th style=\"width: 110px;\">Priority</th>\n                <th style=\"width: 120px;\">Category</th>\n                <th style=\"width: 140px;\">Status</th>\n              </tr>\n            </thead>\n            <tbody>\n              ${(() => {\n                let currentStatus = '';\n                let html = '';\n                \n                allTasks.forEach((task) => {\n                  // Add status group header when status changes\n                  if (task.status !== currentStatus) {\n                    currentStatus = task.status;\n                    const statusEmoji = task.status === 'To do' ? '📝' : \n                                       task.status === 'In progress' ? '🔄' : '✅';\n                    const statusCount = task.status === 'To do' ? stats.todoCount : \n                                       task.status === 'In progress' ? stats.inProgressCount : \n                                       stats.doneCount;\n                    \n                    html += `\n                      <tr class=\"status-group-header\">\n                        <td colspan=\"5\">\n                          ${statusEmoji} ${task.status.toUpperCase()} TASKS (${statusCount})\n                        </td>\n                      </tr>\n                    `;\n                  }\n                  \n                  // Determine status class\n                  let statusClass = 'status-todo';\n                  let statusEmoji = '📝';\n                  if (task.status === 'In progress') {\n                    statusClass = 'status-progress';\n                    statusEmoji = '🔄';\n                  } else if (task.status === 'Done') {\n                    statusClass = 'status-done';\n                    statusEmoji = '✅';\n                  }\n                  \n                  // Determine priority class and emoji\n                  let priorityClass = 'priority-medium';\n                  let priorityEmoji = '🟡';\n                  if (task.priority === 'High') {\n                    priorityClass = 'priority-high';\n                    priorityEmoji = '🔴';\n                  } else if (task.priority === 'Low') {\n                    priorityClass = 'priority-low';\n                    priorityEmoji = '🟢';\n                  }\n                  \n                  html += `\n                    <tr>\n                      <td class=\"date-cell\">${task.dueDate}</td>\n                      <td class=\"task-name-cell\">${task.taskName}</td>\n                      <td>\n                        <span class=\"priority-badge ${priorityClass}\">\n                          ${priorityEmoji} ${task.priority}\n                        </span>\n                      </td>\n                      <td>\n                        <span class=\"category-badge\">${task.category}</span>\n                      </td>\n                      <td>\n                        <span class=\"status-badge ${statusClass}\">\n                          ${statusEmoji} ${task.status}\n                        </span>\n                      </td>\n                    </tr>\n                  `;\n                });\n                \n                return html;\n              })()}\n            </tbody>\n          </table>\n          \n          <!-- Table Summary -->\n          <div class=\"table-summary\">\n            <div>\n              <strong>Total: ${allTasks.length} tasks</strong>\n            </div>\n            <div class=\"summary-item\">\n              <span>📝 To Do: ${stats.todoCount}</span>\n              <span>🔄 In Progress: ${stats.inProgressCount}</span>\n              <span>✅ Done: ${stats.doneCount}</span>\n            </div>\n          </div>\n        </div>\n      </div>\n      \n      <!-- AI Insights -->\n      <div class=\"section page-break\">\n        <h2 class=\"section-title\">🤖 AI Analysis & Insights</h2>\n        <div class=\"ai-insights\">\n          <div style=\"white-space: pre-wrap;\">${reportText}</div>\n        </div>\n      </div>\n    </div>\n    \n    <!-- Footer -->\n    <div class=\"footer\">\n      <p><strong>Generated by n8n + Llama 3.2 AI Agent</strong></p>\n      <p>${new Date().toLocaleString('en-US', { \n        weekday: 'long',\n        year: 'numeric', \n        month: 'long', \n        day: 'numeric',\n        hour: '2-digit',\n        minute: '2-digit'\n      })}</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    html: html,\n    filename: `task-report-${new Date().toISOString().split('T')[0]}.pdf`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -240
+      ],
+      "id": "9645eefd-40ee-41a7-b264-b1a6e2c0c277",
+      "name": "Create HTML Report"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.html;\nconst filename = $input.first().json.filename;\n\n// This would be an HTTP Request node instead\nreturn [{\n  json: {\n    apiUrl: 'https://api.pdf.co/v1/pdf/convert/from/html',\n    html: html,\n    filename: filename\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        -240
+      ],
+      "id": "4cd53f41-136f-4bb8-ab12-82d83341089e",
+      "name": "Call PDF Link"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.html;\nconst filename = $input.first().json.filename;\n\nconst pdfCoPayload = {\n  html: html,\n  name: filename,\n  margins: \"15px\",\n  paperSize: \"A4\",\n  orientation: \"Portrait\",\n  printBackground: true,\n  header: \"\",\n  footer: \"\",\n  async: false\n};\n\nreturn [{\n  json: {\n    pdfCoPayload: pdfCoPayload,\n    filename: filename\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        -240
+      ],
+      "id": "03f9e695-d237-44dd-9c48-07dc46a4a38d",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pdf.co/v1/pdf/convert/from/html",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.pdfCoPayload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1712,
+        -240
+      ],
+      "id": "a968f865-b9f7-46d4-af4a-1aa3cad0493b",
+      "name": "Convert HTML to PDF",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UjxiFFNn1VJc4n46",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1920,
+        -240
+      ],
+      "id": "7230f907-7fef-4107-9156-ecd616deafa4",
+      "name": "Complete HTTP Request Node"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot8583254882:AAHsPa-fObYdaWeY9ywWxZ0yglvaoAYu20Q/sendDocument",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "6522060782"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "document",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2128,
+        -240
+      ],
+      "id": "f88b96cb-8dba-4000-97d8-a8dadac0f4fc",
+      "name": "Send PDF to Telegram"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Get the prompt from previous node\nconst promptText = data.prompt;\n\n// Verify prompt exists\nif (!promptText) {\n  throw new Error('No prompt found in input data');\n}\n\nconsole.log('Prompt length:', promptText.length);\nconsole.log('First 100 chars:', promptText.substring(0, 100));\n\n// Create the complete API payload\nconst apiPayload = {\n  model: \"llama-3.2-3b-instruct\",\n  messages: [\n    {\n      role: \"system\",\n      content: \"You are a professional task management analyst who creates clear, concise, data-driven reports with strategic insights.\"\n    },\n    {\n      role: \"user\",\n      content: promptText\n    }\n  ],\n  temperature: 0.3,\n  max_tokens: 2048\n};\n\n// Return the payload and pass through other data\nreturn [{\n  json: {\n    apiPayload: apiPayload,\n    reportData: data.reportData,\n    statistics: data.statistics,\n    tables: data.tables,\n    prompt: data.prompt\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        -208
+      ],
+      "id": "92e3cf47-e8fd-4ed1-bd6f-6fc95016a2a4",
+      "name": "Code in JavaScript3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages1": {
+      "main": [
+        [
+          {
+            "node": "Format Data for LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Data for LLM": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LM Studio API": {
+      "main": [
+        [
+          {
+            "node": "Extract LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract LLM Response": {
+      "main": [
+        [
+          {
+            "node": "Create HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Call PDF Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call PDF Link": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Convert HTML to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert HTML to PDF": {
+      "main": [
+        [
+          {
+            "node": "Complete HTTP Request Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Complete HTTP Request Node": {
+      "main": [
+        [
+          {
+            "node": "Send PDF to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Call LM Studio API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "64cba535-b39a-4ae6-8f32-826d5afc3226",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dc12bb738b6d289675ba92357bc76f60bab599ea7fd79c16f82ee7ff1f1d413d"
+  },
+  "id": "tXP_t5Fr5TU_4xgDAgjM7",
+  "tags": []
+}
